@@ -1,29 +1,21 @@
 import os
 import logging
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Updater, CommandHandler, CallbackContext
 from telegram.constants import ParseMode
 
-# ==================== تنظیمات اصلی ====================
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 🔥 توکن ربات از متغیر محیطی Railway
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8223115597:AAHI8LQIaY9Tw_Vuc1sIqljESuv3In0dlYo")
-
-# 🔥 آیدی شما
 ADMIN_ID = 6362322187
 ADMIN_USERNAME = "@stevenmacmin"
 
-# 🔥 آیدی کانال‌های شما (مقادیر پیش‌فرض)
-TRAANFILM_CHANNEL_ID = int(os.environ.get("TRAANFILM_CHANNEL_ID", -1003652247811))
-TRAANHUB_CHANNEL_ID = int(os.environ.get("TRAANHUB_CHANNEL_ID", -1003486802784))
-STORAGE_CHANNEL_ID = int(os.environ.get("STORAGE_CHANNEL_ID", -1003592864027))
+# 🔥 آدرس کانال‌ها (بدون @ اول)
+TRAANFILM_CHANNEL = "traanfilm"  # @traanfilm
+TRAANHUB_CHANNEL = "traanhub"    # @traanhub
+STORAGE_CHANNEL = "TraanFilmStorage"  # @TraanFilmStorage
 
-# ==================== ساختار فیلم‌ها ====================
 FILMS = {
     "test": {
         "title": "🎬 فیلم تست ربات",
@@ -33,8 +25,137 @@ FILMS = {
     }
 }
 
-# ==================== توابع اصلی ====================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def start(update: Update, context: CallbackContext):
+    user = update.effective_user
+    update.message.reply_text(
+        f"🤖 ربات فعال شد!\n"
+        f"سلام {user.first_name}\n\n"
+        f"📌 کانال‌های مورد نیاز:\n"
+        f"1. @{TRAANFILM_CHANNEL}\n"
+        f"2. @{TRAANHUB_CHANNEL}\n\n"
+        f"برای تست: /test\n"
+        f"راهنما: /help"
+    )
+
+def test(update: Update, context: CallbackContext):
+    try:
+        # بررسی عضویت در کانال‌ها
+        user = update.effective_user
+        bot = context.bot
+        
+        missing_channels = []
+        
+        # بررسی عضویت در traanfilm
+        try:
+            chat_member = bot.get_chat_member(f"@{TRAANFILM_CHANNEL}", user.id)
+            if chat_member.status in ['left', 'kicked']:
+                missing_channels.append(f"@{TRAANFILM_CHANNEL}")
+        except:
+            missing_channels.append(f"@{TRAANFILM_CHANNEL}")
+        
+        # بررسی عضویت در traanhub
+        try:
+            chat_member = bot.get_chat_member(f"@{TRAANHUB_CHANNEL}", user.id)
+            if chat_member.status in ['left', 'kicked']:
+                missing_channels.append(f"@{TRAANHUB_CHANNEL}")
+        except:
+            missing_channels.append(f"@{TRAANHUB_CHANNEL}")
+        
+        if missing_channels:
+            update.message.reply_text(
+                f"❌ لطفا اول در این کانال‌ها عضو شوید:\n" + 
+                "\n".join(missing_channels) +
+                f"\n\nبعد دوباره /test را بزنید."
+            )
+            return
+        
+        update.message.reply_text(
+            f"✅ ربات آنلاین است!\n"
+            f"👤 کاربر: {user.first_name}\n"
+            f"🆔 آیدی: {user.id}\n"
+            f"✅ عضویت در کانال‌ها: تایید شد\n\n"
+            f"🔗 لینک تست فیلم:\n"
+            f"https://t.me/TraanFilmBot?start=test"
+        )
+        
+    except Exception as e:
+        update.message.reply_text(f"❌ خطا در تست: {str(e)}")
+
+def help_command(update: Update, context: CallbackContext):
+    help_text = """
+🆘 راهنمای ربات ترن فیلم
+
+📋 دستورات:
+/start - شروع کار
+/test - تست ربات و بررسی عضویت
+/help - این راهنما
+
+⚙️ دستورات ادمین:
+/setfilm - تنظیم فیلم جدید
+/getid - دریافت File ID
+
+🔗 کانال‌های مورد نیاز:
+1. @traanfilm
+2. @traanhub
+3. @TraanFilmStorage (برای آپلود فیلم)
+
+📞 پشتیبانی: @stevenmacmin
+"""
+    update.message.reply_text(help_text)
+
+def setfilm(update: Update, context: CallbackContext):
+    if update.effective_user.id != ADMIN_ID:
+        update.message.reply_text("⛔ دسترسی ندارید!")
+        return
+    
+    if len(context.args) < 2:
+        update.message.reply_text("📝 فرمت: /setfilm کد_فیلم FILE_ID")
+        return
+    
+    film_key = context.args[0]
+    file_id = context.args[1]
+    
+    FILMS[film_key] = {
+        "title": f"🎬 فیلم {film_key}",
+        "file_id": file_id,
+        "caption": f"فیلم {film_key} - ارسال شده توسط ربات"
+    }
+    
+    update.message.reply_text(
+        f"✅ فیلم تنظیم شد!\n"
+        f"🔗 لینک: https://t.me/TraanFilmBot?start={film_key}"
+    )
+
+def getid(update: Update, context: CallbackContext):
+    if update.effective_user.id != ADMIN_ID:
+        update.message.reply_text("⛔ دسترسی ندارید!")
+        return
+    
+    if update.message.reply_to_message and update.message.reply_to_message.video:
+        file_id = update.message.reply_to_message.video.file_id
+        update.message.reply_text(f"🎥 File ID:\n`{file_id}`", parse_mode=ParseMode.MARKDOWN)
+    else:
+        update.message.reply_text("📌 روی یک ویدیو ریپلای کنید و /getid بزنید.")
+
+def main():
+    print("🤖 راه‌اندازی ربات ترن فیلم...")
+    updater = Updater(BOT_TOKEN, use_context=True)
+    dp = updater.dispatcher
+    
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("test", test))
+    dp.add_handler(CommandHandler("help", help_command))
+    dp.add_handler(CommandHandler("setfilm", setfilm))
+    dp.add_handler(CommandHandler("getid", getid))
+    
+    print("✅ ربات ساخته شد!")
+    print("⏳ در حال اتصال به تلگرام...")
+    
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == '__main__':
+    main()async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """دستور /start"""
     user = update.effective_user
     
